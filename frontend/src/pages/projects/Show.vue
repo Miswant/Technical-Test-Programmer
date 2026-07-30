@@ -7,7 +7,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
         </svg>
       </router-link>
-      <div>
+      <div class="flex-1">
         <div class="flex items-center gap-2.5">
           <span class="text-xs font-mono font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
             {{ project?.project_code }}
@@ -18,6 +18,13 @@
         </div>
         <h2 class="text-2xl font-extrabold text-gray-900 mt-1 tracking-tight">{{ project?.title }}</h2>
       </div>
+      <router-link
+        v-if="canEditProject"
+        :to="{ name: 'projects.edit', params: { id: project.id } }"
+        class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm hover:shadow transition"
+      >
+        Edit
+      </router-link>
     </div>
 
     <div v-if="loading" class="p-12 bg-white rounded-xl border border-gray-200 flex items-center justify-center">
@@ -108,7 +115,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api'
@@ -118,6 +125,13 @@ const authStore = useAuthStore()
 
 const loading = ref(true)
 const project = ref(null)
+
+const canEditProject = computed(() => {
+  if (!project.value) return false
+  if (!authStore.hasRole('pemohon')) return false
+  if (project.value.user_id !== authStore.user?.id) return false
+  return ['DRAFT', 'REVISION_REQUIRED'].includes(project.value.status)
+})
 
 const statusBadgeClass = (status) => ({
   DRAFT: 'bg-gray-100 text-gray-700',
