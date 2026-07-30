@@ -8,10 +8,13 @@ use App\Http\Requests\StoreProjectRequest;
 use App\Http\Requests\UpdateProjectRequest;
 use App\Http\Requests\TransitionProjectRequest;
 use App\Models\Project;
+use App\Models\ApplicationLog;
 use App\Enums\ProjectStatus;
 use App\Services\ProjectWorkflowService;
+use App\Exceptions\WorkflowException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class ProjectController extends Controller
 {
@@ -59,15 +62,26 @@ class ProjectController extends Controller
         $validated = $request->validated();
         $user = $request->user();
 
-        $project = Project::create([
-            'project_code' => 'PRJ-' . strtoupper(Str::random(8)),
-            'user_id'      => $user->id,
-            'title'        => $validated['title'],
-            'description'  => $validated['description'] ?? null,
-            'status'       => ProjectStatus::DRAFT,
-        ]);
+        $project = DB::transaction(function () use ($validated, $user) {
+            $proj = Project::create([
+                'project_code' => 'PRJ-' . strtoupper(Str::random(8)),
+                'user_id'      => $user->id,
+                'title'        => $validated['title'],
+                'description'  => $validated['description'] ?? null,
+                'status'       => ProjectStatus::DRAFT,
+            ]);
 
-        $this->workflow->transition($project, $user, ProjectStatus::DRAFT, 'Permohonan baru dibuat.');
+            ApplicationLog::create([
+                'project_id' => $proj->id,
+                'actor_id'   => $user->id,
+                'old_status' => null,
+                'new_status' => ProjectStatus::DRAFT,
+                'remarks'    => 'Permohonan baru diinisiasi oleh Pemohon.',
+                'created_at' => now(),
+            ]);
+
+            return $proj;
+        });
 
         $project->load(['user:id,name,email', 'documents']);
 
@@ -116,24 +130,11 @@ class ProjectController extends Controller
 
         $newStatus = ProjectStatus::from($validated['status']);
 
-        // Otorisasi: Pemohon hanya boleh SUBMITTED / REVISED
-        if ($user->hasRole('pemohon')) {
-            if ($project->user_id !== $user->id) {
-                abort(403, 'Akses ditolak.');
-            }
-            if (!in_array($newStatus, [ProjectStatus::SUBMITTED, ProjectStatus::REVISED])) {
-                abort(403, 'Pemohon hanya dapat submit/submit ulang permohonan.');
-            }
+        try {
+            $this->workflow->transition($project, $user, $newStatus, $validated['remarks'] ?? null);
+        } catch (WorkflowException $e) {
+            abort(422, $e->getMessage());
         }
-
-        // Otorisasi: Penilai hanya boleh APPROVED / REVISION_REQUIRED / REJECTED
-        if ($user->hasRole('penilai')) {
-            if (!in_array($newStatus, [ProjectStatus::APPROVED, ProjectStatus::REVISION_REQUIRED, ProjectStatus::REJECTED])) {
-                abort(403, 'Penilai hanya dapat approve, request revision, atau reject.');
-            }
-        }
-
-        $this->workflow->transition($project, $user, $newStatus, $validated['remarks'] ?? null);
 
         $project->load(['user:id,name,email', 'documents', 'logs.actor:id,name']);
 

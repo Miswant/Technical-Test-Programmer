@@ -2,55 +2,67 @@
 
 namespace App\Services;
 
-use App\Models\Project;
-use App\Models\User;
 use App\Enums\ProjectStatus;
 use App\Events\ProjectStatusChanged;
+use App\Exceptions\WorkflowException;
 use App\Models\ApplicationLog;
+use App\Models\Project;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
-use InvalidArgumentException;
 
 class ProjectWorkflowService
 {
-    /**
-     * Transition a project to a new status.
-     *
-     * @param Project $project
-     * @param User $actor
-     * @param ProjectStatus $newStatus
-     * @param string|null $remarks
-     * @return Project
-     * @throws InvalidArgumentException
-     */
     public function transition(Project $project, User $actor, ProjectStatus $newStatus, ?string $remarks = null): Project
     {
         $oldStatus = $project->status;
 
-        // Validasi transisi status
         if (!$oldStatus->canTransitionTo($newStatus)) {
-            throw new InvalidArgumentException(
-                "Tidak dapat mengubah status project dari {$oldStatus->value} ke {$newStatus->value}."
-            );
+            throw WorkflowException::invalidTransition($oldStatus->value, $newStatus->value);
         }
 
-        // Catat dan update dengan database transaction
+        $allowedRoles = $newStatus->allowedRoles();
+        if (!empty($allowedRoles)) {
+            $hasValidRole = false;
+
+            foreach ($allowedRoles as $role) {
+                if ($actor->hasRole($role)) {
+                    $hasValidRole = true;
+                    break;
+                }
+            }
+
+            if (!$hasValidRole) {
+                $primaryRole = $actor->roles->first()?->name ?? 'tanpa-role';
+                throw WorkflowException::unauthorizedRole($primaryRole, $newStatus->value);
+            }
+        }
+
+        if ($actor->hasRole('pemohon') && $project->user_id !== $actor->id) {
+            throw new WorkflowException('Anda tidak berhak memodifikasi permohonan ini.');
+        }
+
         DB::transaction(function () use ($project, $actor, $oldStatus, $newStatus, $remarks) {
-            $project->update([
+            $lockedProject = Project::where('id', $project->id)->lockForUpdate()->firstOrFail();
+
+            if ($lockedProject->status !== $oldStatus) {
+                throw new WorkflowException('Status project telah berubah di session lain. Muat ulang halaman.');
+            }
+
+            $lockedProject->update([
                 'status' => $newStatus,
             ]);
 
             ApplicationLog::create([
                 'project_id' => $project->id,
-                'actor_id'   => $actor->id,
+                'actor_id' => $actor->id,
                 'old_status' => $oldStatus,
                 'new_status' => $newStatus,
-                'remarks'    => $remarks,
+                'remarks' => $remarks,
                 'created_at' => now(),
             ]);
         });
 
-        // Trigger Event / Queue Notification
-        event(new ProjectStatusChanged($project, $actor, $oldStatus, $newStatus, $remarks));
+        event(new ProjectStatusChanged($project->refresh(), $actor, $oldStatus, $newStatus, $remarks));
 
         return $project;
     }
