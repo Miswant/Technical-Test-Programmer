@@ -17,13 +17,21 @@
         </div>
         <h2 class="text-2xl font-extrabold text-gray-900 mt-1 tracking-tight">{{ project?.title }}</h2>
       </div>
-      <router-link
-        v-if="canEditProject"
-        :to="{ name: 'projects.edit', params: { id: project.id } }"
-        class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm hover:shadow transition"
-      >
-        Edit
-      </router-link>
+      <div class="flex items-center gap-2">
+        <router-link
+          :to="{ name: 'projects.logs', params: { id: project.id } }"
+          class="inline-flex items-center gap-2 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-semibold px-4 py-2.5 rounded-lg shadow-sm transition"
+        >
+          Audit Log
+        </router-link>
+        <router-link
+          v-if="canEditProject"
+          :to="{ name: 'projects.edit', params: { id: project.id } }"
+          class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm hover:shadow transition"
+        >
+          Edit
+        </router-link>
+      </div>
     </div>
 
     <div v-if="loading" class="p-12 bg-white rounded-xl border border-gray-200 flex items-center justify-center">
@@ -106,25 +114,7 @@
       <aside class="space-y-6">
         <ReviewerActionPanel v-if="authStore.hasRole('penilai') && project" :project="project" @updated="refreshProject" />
 
-        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
-          <h3 class="text-lg font-bold text-gray-800 border-b pb-3">Riwayat Penilaian</h3>
-          <div v-if="project?.logs?.length === 0" class="text-center text-sm text-gray-500 py-6">
-            Belum ada audit log tersedia.
-          </div>
-          <div v-else class="relative pl-6 border-l-2 border-slate-100 space-y-6">
-            <div v-for="log in project?.logs" :key="log.id" class="relative">
-              <span class="absolute -left-[31px] top-0 h-4 w-4 rounded-full border-2 bg-white" :class="logPointColor(log.new_status)"></span>
-              <div class="text-xs text-gray-400 font-semibold">{{ formatDate(log.created_at, true) }}</div>
-              <h5 class="text-sm font-bold text-gray-800 mt-1">
-                {{ log.actor?.name }} &rarr;
-                <span class="text-xs px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ml-1" :class="statusBadgeClass(log.new_status)">
-                  {{ statusLabel(log.new_status) }}
-                </span>
-              </h5>
-              <p class="text-xs text-gray-500 mt-1 italic" v-if="log.remarks">"{{ log.remarks }}"</p>
-            </div>
-          </div>
-        </div>
+        <AuditTimeline :logs="project?.logs || []" title="Riwayat Penilaian" empty-message="Belum ada audit log tersedia." />
       </aside>
     </div>
   </div>
@@ -137,6 +127,7 @@ import { useAuthStore } from '@/stores/auth'
 import api from '@/api'
 import DocumentUploadDropzone from '@/components/DocumentUploadDropzone.vue'
 import ReviewerActionPanel from '@/components/ReviewerActionPanel.vue'
+import AuditTimeline from '@/components/AuditTimeline.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -170,15 +161,6 @@ const statusLabel = (status) => ({
   APPROVED: 'Disetujui',
   REJECTED: 'Ditolak',
 })[status] || status
-
-const logPointColor = (status) => ({
-  DRAFT: 'border-gray-400',
-  SUBMITTED: 'border-blue-500',
-  REVISION_REQUIRED: 'border-amber-500',
-  REVISED: 'border-indigo-500',
-  APPROVED: 'border-green-500',
-  REJECTED: 'border-red-500',
-})[status] || 'border-gray-400'
 
 const formatDate = (dateStr, time = false) => {
   if (!dateStr) return ''
