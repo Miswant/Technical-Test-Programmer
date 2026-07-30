@@ -13,6 +13,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
         Route::get('/dashboard', [ProjectController::class, 'dashboard']);
+        Route::get('/dashboard/chart', [ProjectController::class, 'chart']);
 
         Route::get('/projects/export', [ProjectExportController::class, 'excel'])->name('api.projects.export');
         Route::get('/projects/export/download', [ProjectExportController::class, 'download'])->name('api.projects.export.download');
