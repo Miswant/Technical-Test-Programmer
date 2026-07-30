@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import pinia from '@/stores'
 
 const routes = [
   {
@@ -53,7 +54,7 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to, from, next) => {
-  const authStore = useAuthStore()
+  const authStore = useAuthStore(pinia)
 
   if (authStore.isAuthenticated && !authStore.user) {
     await authStore.fetchMe()
