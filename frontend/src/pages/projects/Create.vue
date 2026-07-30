@@ -35,6 +35,14 @@
           <p v-if="errors.description" class="mt-1 text-sm text-red-600">{{ errors.description }}</p>
         </div>
 
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="block text-sm font-semibold text-gray-700">Dokumen Pendukung</label>
+            <span class="text-xs text-gray-500">Opsional saat draft, wajib saat submit di tahap berikutnya</span>
+          </div>
+          <DocumentUploadDropzone v-model="selectedFile" @invalid="handleInvalidFile" />
+        </div>
+
         <div class="grid sm:grid-cols-2 gap-4 bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-600">
           <div>
             <p class="font-semibold text-gray-800">Status saat ini</p>
@@ -72,6 +80,7 @@
 import { computed, reactive, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api from '@/api'
+import DocumentUploadDropzone from '@/components/DocumentUploadDropzone.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -79,6 +88,7 @@ const router = useRouter()
 const loading = ref(false)
 const serverError = ref('')
 const project = ref(null)
+const selectedFile = ref(null)
 
 const form = reactive({
   title: '',
@@ -135,6 +145,10 @@ const loadProject = async () => {
   }
 }
 
+const handleInvalidFile = (message) => {
+  serverError.value = message
+}
+
 const handleSubmit = async () => {
   serverError.value = ''
 
@@ -142,21 +156,33 @@ const handleSubmit = async () => {
 
   loading.value = true
   try {
+    const payload = new FormData()
+    payload.append('title', form.title)
+    payload.append('description', form.description || '')
+
+    if (selectedFile.value) {
+      payload.append('file', selectedFile.value)
+    }
+
+    const config = { headers: { 'Content-Type': 'multipart/form-data' } }
+
     if (isEditMode.value) {
-      await api.patch(`/projects/${route.params.id}`, form)
+      await api.post(`/projects/${route.params.id}?_method=PATCH`, payload, config)
       await router.push({ name: 'projects.show', params: { id: route.params.id } })
       return
     }
 
-    const response = await api.post('/projects', form)
+    const response = await api.post('/projects', payload, config)
     await router.push({ name: 'projects.show', params: { id: response.data.data.id } })
   } catch (error) {
     const responseErrors = error.response?.data?.errors
     if (responseErrors) {
       errors.title = responseErrors.title?.[0] || ''
       errors.description = responseErrors.description?.[0] || ''
+      serverError.value = Object.values(responseErrors).flat()[0] || error.response?.data?.message || 'Gagal menyimpan permohonan.'
+    } else {
+      serverError.value = error.response?.data?.message || 'Gagal menyimpan permohonan.'
     }
-    serverError.value = error.response?.data?.message || 'Gagal menyimpan permohonan.'
   } finally {
     loading.value = false
   }

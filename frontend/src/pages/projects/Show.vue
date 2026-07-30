@@ -1,6 +1,5 @@
 <template>
   <div class="space-y-8">
-    <!-- Header/Back Nav -->
     <div class="flex items-center gap-4">
       <router-link :to="{ name: 'projects.index' }" class="p-2 rounded-lg border bg-white hover:bg-gray-50 text-gray-500 hover:text-gray-700 transition">
         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -32,9 +31,7 @@
     </div>
 
     <div v-else class="grid lg:grid-cols-3 gap-8">
-      <!-- Main Info & Files -->
       <section class="lg:col-span-2 space-y-8">
-        <!-- Info Card -->
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
           <h3 class="text-lg font-bold text-gray-800 border-b pb-3">Informasi Permohonan</h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -53,7 +50,25 @@
           </div>
         </div>
 
-        <!-- Files/Documents Card -->
+        <div v-if="canEditProject" class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
+          <div class="flex items-center justify-between border-b pb-3">
+            <h3 class="text-lg font-bold text-gray-800">Upload Dokumen</h3>
+            <span class="text-xs text-gray-500 font-semibold">PDF / DOCX / JPG / PNG | Maks 5 MB</span>
+          </div>
+          <DocumentUploadDropzone v-model="selectedFile" @invalid="handleInvalidFile" />
+          <div class="flex justify-end">
+            <button
+              type="button"
+              :disabled="uploading || !selectedFile"
+              @click="uploadDocument"
+              class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2.5 rounded-lg shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <span v-if="uploading" class="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin"></span>
+              {{ uploading ? 'Mengunggah...' : 'Upload Dokumen' }}
+            </button>
+          </div>
+        </div>
+
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
           <div class="flex justify-between items-center border-b pb-3">
             <h3 class="text-lg font-bold text-gray-800">Lampiran Dokumen</h3>
@@ -88,7 +103,6 @@
         </div>
       </section>
 
-      <!-- Sidebar: Timeline & Action Logs -->
       <aside class="space-y-6">
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
           <h3 class="text-lg font-bold text-gray-800 border-b pb-3">Riwayat Penilaian</h3>
@@ -119,11 +133,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api'
+import DocumentUploadDropzone from '@/components/DocumentUploadDropzone.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
 
 const loading = ref(true)
+const uploading = ref(false)
+const selectedFile = ref(null)
 const project = ref(null)
 
 const canEditProject = computed(() => {
@@ -176,6 +193,30 @@ const formatBytes = (bytes) => {
   const sizes = ['Bytes', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+const handleInvalidFile = () => {
+  selectedFile.value = null
+}
+
+const uploadDocument = async () => {
+  if (!selectedFile.value || !project.value) return
+
+  uploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', selectedFile.value)
+
+    await api.post(`/projects/${project.value.id}/documents`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+
+    const response = await api.get(`/projects/${route.params.id}`)
+    project.value = response.data.data
+    selectedFile.value = null
+  } finally {
+    uploading.value = false
+  }
 }
 
 onMounted(async () => {
