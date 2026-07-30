@@ -34,6 +34,11 @@ const routes = [
         component: () => import('@/pages/projects/Create.vue'),
       },
       {
+        path: 'projects/:id/logs',
+        name: 'projects.logs',
+        component: () => import('@/pages/projects/Logs.vue'),
+      },
+      {
         path: 'projects/:id',
         name: 'projects.show',
         component: () => import('@/pages/projects/Show.vue'),
