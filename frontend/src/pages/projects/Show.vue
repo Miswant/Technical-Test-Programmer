@@ -104,6 +104,8 @@
       </section>
 
       <aside class="space-y-6">
+        <ReviewerActionPanel v-if="authStore.hasRole('penilai') && project" :project="project" @updated="refreshProject" />
+
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
           <h3 class="text-lg font-bold text-gray-800 border-b pb-3">Riwayat Penilaian</h3>
           <div v-if="project?.logs?.length === 0" class="text-center text-sm text-gray-500 py-6">
@@ -134,6 +136,7 @@ import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api'
 import DocumentUploadDropzone from '@/components/DocumentUploadDropzone.vue'
+import ReviewerActionPanel from '@/components/ReviewerActionPanel.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -197,6 +200,15 @@ const formatBytes = (bytes) => {
 
 const handleInvalidFile = () => {
   selectedFile.value = null
+}
+
+const refreshProject = async () => {
+  try {
+    const response = await api.get(`/projects/${route.params.id}`)
+    project.value = response.data.data
+  } catch (error) {
+    //
+  }
 }
 
 const uploadDocument = async () => {
