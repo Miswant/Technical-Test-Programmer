@@ -31,17 +31,26 @@ enum ProjectStatus: string
     public function allowedTransitions(): array
     {
         return match ($this) {
-            self::DRAFT              => [self::SUBMITTED],
-            self::SUBMITTED          => [self::APPROVED, self::REVISION_REQUIRED, self::REJECTED],
-            self::REVISION_REQUIRED  => [self::REVISED],
-            self::REVISED            => [self::APPROVED, self::REVISION_REQUIRED, self::REJECTED],
-            self::APPROVED           => [],
-            self::REJECTED           => [],
+            self::DRAFT => [self::SUBMITTED],
+            self::SUBMITTED => [self::APPROVED, self::REVISION_REQUIRED, self::REJECTED],
+            self::REVISION_REQUIRED => [self::REVISED],
+            self::REVISED => [self::APPROVED, self::REVISION_REQUIRED, self::REJECTED],
+            self::APPROVED => [],
+            self::REJECTED => [],
         };
     }
 
     public function canTransitionTo(self $target): bool
     {
         return in_array($target, $this->allowedTransitions());
+    }
+
+    public function allowedRoles(): array
+    {
+        return match ($this) {
+            self::SUBMITTED, self::REVISED => ['pemohon'],
+            self::APPROVED, self::REVISION_REQUIRED, self::REJECTED => ['penilai'],
+            self::DRAFT => [],
+        };
     }
 }
