@@ -1,0 +1,87 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: si-persetujuan-app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    volumes:
+      - ./:/var/www/html
+      - vendor_data:/var/www/html/vendor
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    networks:
+      - si-persetujuan
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: si-persetujuan-nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./:/var/www/html
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    networks:
+      - si-persetujuan
+
+  db:
+    image: postgres:16-alpine
+    container_name: si-persetujuan-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-si_persetujuan}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - si-persetujuan
+
+  redis:
+    image: redis:7-alpine
+    container_name: si-persetujuan-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - si-persetujuan
+
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: si-persetujuan-queue
+    restart: unless-stopped
+    working_dir: /var/www/html
+    command: php artisan queue:work redis --sleep=3 --tries=3 --timeout=120
+    volumes:
+      - ./:/var/www/html
+      - vendor_data:/var/www/html/vendor
+    env_file:
+      - .env
+    depends_on:
+      - app
+      - redis
+      - db
+    networks:
+      - si-persetujuan
+
+volumes:
+  postgres_data:
+  redis_data:
+  vendor_data:
+
+networks:
+  si-persetujuan:
+    driver: bridge
