@@ -17,6 +17,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/projects/export', [ProjectExportController::class, 'excel'])->name('api.projects.export');
         Route::get('/projects/export/download', [ProjectExportController::class, 'download'])->name('api.projects.export.download');
         Route::get('/projects/{project}/export-pdf', [ProjectExportController::class, 'pdf'])->name('api.projects.export-pdf');
+        Route::get('/projects/{project}/certificate', [ProjectExportController::class, 'certificate'])->name('api.projects.certificate.download');
 
         Route::get('/projects', [ProjectController::class, 'index']);
         Route::post('/projects', [ProjectController::class, 'store']);

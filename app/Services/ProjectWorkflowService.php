@@ -8,10 +8,17 @@ use App\Exceptions\WorkflowException;
 use App\Models\ApplicationLog;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Certificates\CertificateGeneratorService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class ProjectWorkflowService
 {
+    public function __construct(
+        private readonly CertificateGeneratorService $certificateGenerator
+    ) {
+    }
+
     public function transition(Project $project, User $actor, ProjectStatus $newStatus, ?string $remarks = null): Project
     {
         $oldStatus = $project->status;
@@ -62,8 +69,22 @@ class ProjectWorkflowService
             ]);
         });
 
-        event(new ProjectStatusChanged($project->refresh(), $actor, $oldStatus, $newStatus, $remarks));
+        $project = $project->refresh();
+
+        if ($newStatus === ProjectStatus::APPROVED) {
+            $project = $this->certificateGenerator->generate($project);
+        }
+
+        Cache::forget($this->dashboardCacheKey($project->user_id));
+        Cache::forget($this->dashboardCacheKey(null));
+
+        event(new ProjectStatusChanged($project, $actor, $oldStatus, $newStatus, $remarks));
 
         return $project;
+    }
+
+    public function dashboardCacheKey(?int $userId): string
+    {
+        return $userId ? 'dashboard.stats.user.' . $userId : 'dashboard.stats.global';
     }
 }

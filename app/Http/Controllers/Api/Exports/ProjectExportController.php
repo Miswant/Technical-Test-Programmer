@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api\Exports;
 
-use App\Exports\ProjectsExport;
 use App\Http\Controllers\Controller;
 use App\Jobs\ExportProjectsToExcelJob;
 use App\Models\Project;
@@ -10,7 +9,6 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Maatwebsite\Excel\Facades\Excel;
 
 class ProjectExportController extends Controller
 {
@@ -51,6 +49,15 @@ class ProjectExportController extends Controller
         ])->setPaper('a4', 'portrait');
 
         return $pdf->download(sprintf('project-%s.pdf', $project->project_code));
+    }
+
+    public function certificate(Request $request, Project $project)
+    {
+        $this->authorizeAnyRole($request);
+
+        abort_unless($project->certificate_path, 404);
+
+        return Storage::disk('local')->download($project->certificate_path, sprintf('certificate-%s.pdf', $project->project_code));
     }
 
     private function authorizeAnyRole(Request $request): void
