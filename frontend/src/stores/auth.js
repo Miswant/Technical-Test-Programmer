@@ -9,7 +9,8 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     isAuthenticated: (state) => !!state.token,
-    hasRole: (state) => (role) => state.user?.roles?.some(r => r.name === role) || false,
+    primaryRole: (state) => state.user?.roles?.[0]?.name || null,
+    hasRole: (state) => (role) => state.user?.roles?.some((item) => item.name === role) || false,
   },
   actions: {
     async login(email, password) {
@@ -21,31 +22,33 @@ export const useAuthStore = defineStore('auth', {
         this.user = user
         localStorage.setItem('token', token)
         return true
-      } catch (error) {
-        throw error
       } finally {
         this.loading = false
       }
     },
     async fetchMe() {
       if (!this.token) return
+
       try {
         const response = await api.get('/me')
         this.user = response.data.data
       } catch (error) {
-        this.logout()
+        this.reset()
       }
     },
     async logout() {
       try {
         await api.post('/logout')
-      } catch (e) {
+      } catch (error) {
         // ignore
       } finally {
-        this.token = null
-        this.user = null
-        localStorage.removeItem('token')
+        this.reset()
       }
+    },
+    reset() {
+      this.token = null
+      this.user = null
+      localStorage.removeItem('token')
     },
   },
 })
