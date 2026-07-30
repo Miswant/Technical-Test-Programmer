@@ -32,30 +32,16 @@ class ProjectController extends Controller
         $query = Project::query()
             ->with(['user:id,name,email', 'documents:id,project_id,file_name,mime_type'])
             ->when($user->hasRole('pemohon'), fn ($q) => $q->where('user_id', $user->id))
-            ->when(
-                $validated['search'] ?? null,
-                fn ($q, $search) => $q->where(function ($q) use ($search) {
-                    $q->where('title', 'ilike', "%{$search}%")
-                      ->orWhere('project_code', 'ilike', "%{$search}%");
-                })
-            )
-            ->when(
-                $validated['status'] ?? null,
-                fn ($q, $status) => $q->where('status', $status)
-            )
-            ->when(
-                $validated['date_from'] ?? null,
-                fn ($q, $date) => $q->whereDate('created_at', '>=', $date)
-            )
-            ->when(
-                $validated['date_to'] ?? null,
-                fn ($q, $date) => $q->whereDate('created_at', '<=', $date)
-            )
+            ->when($validated['search'] ?? null, fn ($q, $search) => $q->where(function ($q) use ($search) {
+                $q->where('title', 'ilike', "%{$search}%")
+                  ->orWhere('project_code', 'ilike', "%{$search}%");
+            }))
+            ->when($validated['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
+            ->when($validated['date_from'] ?? null, fn ($q, $date) => $q->whereDate('created_at', '>=', $date))
+            ->when($validated['date_to'] ?? null, fn ($q, $date) => $q->whereDate('created_at', '<=', $date))
             ->orderByDesc('created_at');
 
-        $projects = $query->cursorPaginate($perPage);
-
-        return response()->json($projects);
+        return response()->json($query->cursorPaginate($perPage));
     }
 
     public function store(StoreProjectRequest $request): JsonResponse
@@ -66,18 +52,18 @@ class ProjectController extends Controller
         $project = DB::transaction(function () use ($validated, $user) {
             $proj = Project::create([
                 'project_code' => 'PRJ-' . strtoupper(Str::random(8)),
-                'user_id'      => $user->id,
-                'title'        => $validated['title'],
-                'description'  => $validated['description'] ?? null,
-                'status'       => ProjectStatus::DRAFT,
+                'user_id' => $user->id,
+                'title' => $validated['title'],
+                'description' => $validated['description'] ?? null,
+                'status' => ProjectStatus::DRAFT,
             ]);
 
             ApplicationLog::create([
                 'project_id' => $proj->id,
-                'actor_id'   => $user->id,
+                'actor_id' => $user->id,
                 'old_status' => null,
                 'new_status' => ProjectStatus::DRAFT,
-                'remarks'    => 'Permohonan baru diinisiasi oleh Pemohon.',
+                'remarks' => 'Permohonan baru diinisiasi oleh Pemohon.',
                 'created_at' => now(),
             ]);
 
@@ -97,11 +83,7 @@ class ProjectController extends Controller
             abort(403, 'Akses ditolak.');
         }
 
-        $project->load([
-            'user:id,name,email',
-            'documents',
-            'logs' => fn ($q) => $q->with('actor:id,name'),
-        ]);
+        $project->load(['user:id,name,email', 'documents', 'logs' => fn ($q) => $q->with('actor:id,name')]);
 
         return response()->json([
             'data' => $project,
@@ -131,7 +113,6 @@ class ProjectController extends Controller
     {
         $user = $request->user();
         $validated = $request->validated();
-
         $newStatus = ProjectStatus::from($validated['status']);
 
         try {
@@ -154,19 +135,43 @@ class ProjectController extends Controller
         $cacheKey = $this->workflow->dashboardCacheKey($user->hasRole('pemohon') ? $user->id : null);
 
         $stats = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
-            $query = Project::query()
-                ->when($user->hasRole('pemohon'), fn ($q) => $q->where('user_id', $user->id));
+            $query = Project::query()->when($user->hasRole('pemohon'), fn ($q) => $q->where('user_id', $user->id));
 
-            return $query->selectRaw("COUNT(*) FILTER (WHERE status = 'DRAFT') AS draft,
-                COUNT(*) FILTER (WHERE status = 'SUBMITTED') AS submitted,
-                COUNT(*) FILTER (WHERE status = 'REVISION_REQUIRED') AS revision_required,
-                COUNT(*) FILTER (WHERE status = 'REVISED') AS revised,
-                COUNT(*) FILTER (WHERE status = 'APPROVED') AS approved,
-                COUNT(*) FILTER (WHERE status = 'REJECTED') AS rejected,
-                COUNT(*) AS total")->first();
+            return $query->selectRaw("COUNT(*) FILTER (WHERE status = 'DRAFT') AS draft, COUNT(*) FILTER (WHERE status = 'SUBMITTED') AS submitted, COUNT(*) FILTER (WHERE status = 'REVISION_REQUIRED') AS revision_required, COUNT(*) FILTER (WHERE status = 'REVISED') AS revised, COUNT(*) FILTER (WHERE status = 'APPROVED') AS approved, COUNT(*) FILTER (WHERE status = 'REJECTED') AS rejected, COUNT(*) AS total")->first();
         });
 
         return response()->json(['data' => $stats]);
+    }
+
+    public function chart(): JsonResponse
+    {
+        $user = request()->user();
+        $cacheKey = $this->workflow->dashboardCacheKey($user->hasRole('pemohon') ? $user->id : null) . '.chart';
+
+        $data = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
+            $baseQuery = Project::query()->when($user->hasRole('pemohon'), fn ($q) => $q->where('user_id', $user->id));
+
+            $daily = (clone $baseQuery)
+                ->selectRaw("DATE(created_at) as date, COUNT(*) as total")
+                ->where('created_at', '>=', now()->subDays(6)->startOfDay())
+                ->groupByRaw('DATE(created_at)')
+                ->orderBy('date')
+                ->get();
+
+            $monthly = (clone $baseQuery)
+                ->selectRaw("DATE_TRUNC('month', created_at) as month, COUNT(*) as total")
+                ->where('created_at', '>=', now()->subMonths(11)->startOfMonth())
+                ->groupByRaw("DATE_TRUNC('month', created_at)")
+                ->orderBy('month')
+                ->get();
+
+            return [
+                'daily' => $daily,
+                'monthly' => $monthly,
+            ];
+        });
+
+        return response()->json(['data' => $data]);
     }
 
     public function logs(Project $project): JsonResponse
@@ -177,10 +182,7 @@ class ProjectController extends Controller
             abort(403, 'Akses ditolak.');
         }
 
-        $logs = $project->logs()
-            ->with('actor:id,name')
-            ->orderByDesc('created_at')
-            ->cursorPaginate(30);
+        $logs = $project->logs()->with('actor:id,name')->orderByDesc('created_at')->cursorPaginate(30);
 
         return response()->json($logs);
     }
