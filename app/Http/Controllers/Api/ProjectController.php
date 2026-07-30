@@ -15,6 +15,7 @@ use App\Exceptions\WorkflowException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class ProjectController extends Controller
 {
@@ -102,7 +103,10 @@ class ProjectController extends Controller
             'logs' => fn ($q) => $q->with('actor:id,name'),
         ]);
 
-        return response()->json(['data' => $project]);
+        return response()->json([
+            'data' => $project,
+            'certificate_url' => $project->certificate_path ? route('api.projects.certificate.download', ['project' => $project->id]) : null,
+        ]);
     }
 
     public function update(UpdateProjectRequest $request, Project $project): JsonResponse
@@ -131,32 +135,36 @@ class ProjectController extends Controller
         $newStatus = ProjectStatus::from($validated['status']);
 
         try {
-            $this->workflow->transition($project, $user, $newStatus, $validated['remarks'] ?? null);
+            $project = $this->workflow->transition($project, $user, $newStatus, $validated['remarks'] ?? null);
         } catch (WorkflowException $e) {
             abort(422, $e->getMessage());
         }
 
         $project->load(['user:id,name,email', 'documents', 'logs.actor:id,name']);
 
-        return response()->json(['data' => $project]);
+        return response()->json([
+            'data' => $project,
+            'certificate_url' => $project->certificate_path ? route('api.projects.certificate.download', ['project' => $project->id]) : null,
+        ]);
     }
 
     public function dashboard(): JsonResponse
     {
         $user = request()->user();
+        $cacheKey = $this->workflow->dashboardCacheKey($user->hasRole('pemohon') ? $user->id : null);
 
-        $query = Project::query()
-            ->when($user->hasRole('pemohon'), fn ($q) => $q->where('user_id', $user->id));
+        $stats = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($user) {
+            $query = Project::query()
+                ->when($user->hasRole('pemohon'), fn ($q) => $q->where('user_id', $user->id));
 
-        $stats = $query->selectRaw("
-            COUNT(*) FILTER (WHERE status = 'DRAFT')              AS draft,
-            COUNT(*) FILTER (WHERE status = 'SUBMITTED')          AS submitted,
-            COUNT(*) FILTER (WHERE status = 'REVISION_REQUIRED')  AS revision_required,
-            COUNT(*) FILTER (WHERE status = 'REVISED')            AS revised,
-            COUNT(*) FILTER (WHERE status = 'APPROVED')           AS approved,
-            COUNT(*) FILTER (WHERE status = 'REJECTED')           AS rejected,
-            COUNT(*)                                              AS total
-        ")->first();
+            return $query->selectRaw("COUNT(*) FILTER (WHERE status = 'DRAFT') AS draft,
+                COUNT(*) FILTER (WHERE status = 'SUBMITTED') AS submitted,
+                COUNT(*) FILTER (WHERE status = 'REVISION_REQUIRED') AS revision_required,
+                COUNT(*) FILTER (WHERE status = 'REVISED') AS revised,
+                COUNT(*) FILTER (WHERE status = 'APPROVED') AS approved,
+                COUNT(*) FILTER (WHERE status = 'REJECTED') AS rejected,
+                COUNT(*) AS total")->first();
+        });
 
         return response()->json(['data' => $stats]);
     }

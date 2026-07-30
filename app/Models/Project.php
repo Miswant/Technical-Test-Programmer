@@ -18,10 +18,13 @@ class Project extends Model
         'title',
         'description',
         'status',
+        'certificate_path',
+        'certificate_generated_at',
     ];
 
     protected $casts = [
         'status' => ProjectStatus::class,
+        'certificate_generated_at' => 'datetime',
     ];
 
     public function user(): BelongsTo
