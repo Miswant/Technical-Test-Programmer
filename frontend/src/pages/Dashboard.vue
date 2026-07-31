@@ -322,13 +322,13 @@ onMounted(async () => {
   try {
     const [statsRes, projectsRes] = await Promise.all([
       api.get('/dashboard'),
-      api.get('/projects', { params: { per_page: 5 } }),
+      api.get('/projects', { params: { per_page: 15 } }),
     ])
     stats.value = statsRes.data.data
     if (authStore.hasRole('penilai')) {
-      reviewQueue.value = projectsRes.data.data.filter((project) => ['SUBMITTED', 'REVISION_REQUIRED', 'REVISED'].includes(project.status))
+      reviewQueue.value = projectsRes.data.data.filter((project) => ['SUBMITTED', 'REVISION_REQUIRED', 'REVISED'].includes(project.status)).slice(0, 5)
     } else {
-      recentProjects.value = projectsRes.data.data
+      recentProjects.value = projectsRes.data.data.slice(0, 5)
     }
   } catch (error) {
     //
